@@ -1,5 +1,7 @@
 package com.office.timekeeper.ui.settings
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,6 +23,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -28,14 +31,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.android.gms.location.LocationServices
 import kotlin.math.roundToInt
 
 /**
@@ -57,6 +65,9 @@ fun SettingsScreen(
     val targetHours by viewModel.targetHoursPerDay.collectAsStateWithLifecycle()
     val geofenceRadius by viewModel.geofenceRadiusMeters.collectAsStateWithLifecycle()
     val absences by viewModel.absencesThisWeek.collectAsStateWithLifecycle()
+    val isLocationCalibrated by viewModel.isLocationCalibrated.collectAsStateWithLifecycle()
+    val calibratedLat by viewModel.calibratedLatitude.collectAsStateWithLifecycle()
+    val calibratedLng by viewModel.calibratedLongitude.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
     // Show validation errors as snackbar
@@ -151,6 +162,14 @@ fun SettingsScreen(
                 accessibilityLabel = "Absences: $absences"
             )
         }
+
+        // --- Office Location Calibration ---
+        CalibrateLocationCard(
+            isCalibrated = isLocationCalibrated,
+            calibratedLat = calibratedLat,
+            calibratedLng = calibratedLng,
+            onCalibrate = { lat, lng -> viewModel.onCalibrateLocation(lat, lng) }
+        )
 
         // Weekly target summary
         WeeklyTargetSummary(days = targetDays, hoursPerDay = targetHours, absences = absences)
@@ -361,6 +380,94 @@ private fun WeeklyTargetSummary(days: Int, hoursPerDay: Int, absences: Int = 0) 
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
+        }
+    }
+}
+
+/**
+ * Card for calibrating or recalibrating the office location via GPS.
+ * Shows current calibrated coordinates when available.
+ */
+@Composable
+private fun CalibrateLocationCard(
+    isCalibrated: Boolean,
+    calibratedLat: Double?,
+    calibratedLng: Double?,
+    onCalibrate: (Double, Double) -> Unit
+) {
+    val context = LocalContext.current
+    var isCalibrating by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Office location calibration" },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.LocationOn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.padding(horizontal = 8.dp))
+                Text(
+                    text = "Office Location",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = if (isCalibrated) "Tap to recalibrate using your current GPS position."
+                       else "Calibrate your office location for auto check-in. Stand at your desk and tap the button.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (isCalibrated && calibratedLat != null && calibratedLng != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "📍 ${String.format("%.4f", calibratedLat)}, ${String.format("%.4f", calibratedLng)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    isCalibrating = true
+                    val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        @Suppress("MissingPermission")
+                        fusedClient.lastLocation.addOnSuccessListener { location ->
+                            if (location != null) {
+                                onCalibrate(location.latitude, location.longitude)
+                            }
+                            isCalibrating = false
+                        }.addOnFailureListener {
+                            isCalibrating = false
+                        }
+                    } else {
+                        isCalibrating = false
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isCalibrating
+            ) {
+                Text(
+                    text = if (isCalibrating) "Calibrating..." else if (isCalibrated) "📍 Recalibrate" else "📍 Calibrate Office Location"
+                )
+            }
         }
     }
 }

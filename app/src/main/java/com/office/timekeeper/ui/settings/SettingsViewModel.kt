@@ -3,6 +3,7 @@ package com.office.timekeeper.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.office.timekeeper.data.repository.SettingsRepository
+import com.office.timekeeper.geofence.GeofenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +21,8 @@ import kotlinx.coroutines.launch
  * Requirements: 12.1, 12.2, 12.3, 12.4
  */
 class SettingsViewModel(
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val geofenceManager: GeofenceManager? = null
 ) : ViewModel() {
 
     /** Target office days per week (1–5, default 3). */
@@ -42,6 +44,21 @@ class SettingsViewModel(
     val absencesThisWeek: StateFlow<Int> =
         settingsRepository.absencesThisWeek
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** Whether the office location has been calibrated via GPS. */
+    val isLocationCalibrated: StateFlow<Boolean> =
+        settingsRepository.isLocationCalibrated
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Calibrated latitude (null if not calibrated). */
+    val calibratedLatitude: StateFlow<Double?> =
+        settingsRepository.calibratedLatitude
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Calibrated longitude (null if not calibrated). */
+    val calibratedLongitude: StateFlow<Double?> =
+        settingsRepository.calibratedLongitude
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _error = MutableStateFlow<String?>(null)
     /** Transient error message for UI display; cleared after showing. */
@@ -111,5 +128,20 @@ class SettingsViewModel(
     /** Call from the UI after displaying the error to clear it. */
     fun clearError() {
         _error.value = null
+    }
+
+    /**
+     * Saves the calibrated office location and re-registers the geofence
+     * at the new coordinates.
+     */
+    fun onCalibrateLocation(latitude: Double, longitude: Double) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.calibrateLocation(latitude, longitude)
+                geofenceManager?.reRegisterGeofence()
+            } catch (e: Exception) {
+                _error.value = "Failed to calibrate: ${e.message}"
+            }
+        }
     }
 }

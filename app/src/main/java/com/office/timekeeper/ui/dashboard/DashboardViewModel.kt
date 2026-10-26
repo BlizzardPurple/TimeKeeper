@@ -74,11 +74,6 @@ class DashboardViewModel(
         attendanceRepository.isWeeklyTargetMet()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    /** Whether the office location has been calibrated. */
-    val isLocationCalibrated: StateFlow<Boolean> =
-        settingsRepository.isLocationCalibrated
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
-
     /** Whether an auto check-in was triggered (for dashboard note). */
     val autoCheckInTriggered: StateFlow<Boolean> =
         settingsRepository.autoCheckInTriggered
@@ -129,17 +124,6 @@ class DashboardViewModel(
     fun clearAutoCheckInNote() {
         viewModelScope.launch {
             settingsRepository.clearAutoCheckInTriggered()
-        }
-    }
-
-    fun onCalibrateLocation(latitude: Double, longitude: Double) {
-        viewModelScope.launch {
-            try {
-                settingsRepository.calibrateLocation(latitude, longitude)
-                geofenceManager?.reRegisterGeofence()
-            } catch (e: Exception) {
-                _error.value = "Failed to calibrate: ${e.message}"
-            }
         }
     }
 

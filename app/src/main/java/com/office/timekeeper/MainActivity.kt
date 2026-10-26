@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return SettingsViewModel(appModule.settingsRepository) as T
+                return SettingsViewModel(appModule.settingsRepository, appModule.geofenceManager) as T
             }
         }
     }
