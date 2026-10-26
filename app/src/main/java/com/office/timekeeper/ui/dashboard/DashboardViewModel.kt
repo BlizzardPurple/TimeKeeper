@@ -8,6 +8,7 @@ import com.office.timekeeper.data.db.TimeSession
 import com.office.timekeeper.data.repository.AttendanceRepository
 import com.office.timekeeper.data.repository.SettingsRepository
 import com.office.timekeeper.domain.WeekBoundaryUtil
+import com.office.timekeeper.geofence.GeofenceManager
 import com.office.timekeeper.widget.TimeKeeperWidget
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,7 +30,8 @@ import java.time.LocalDate
 class DashboardViewModel(
     private val attendanceRepository: AttendanceRepository,
     private val settingsRepository: SettingsRepository,
-    private val application: Application
+    private val application: Application,
+    private val geofenceManager: GeofenceManager? = null
 ) : ViewModel() {
 
     /** Whether the user currently has an open session. */
@@ -72,6 +74,16 @@ class DashboardViewModel(
         attendanceRepository.isWeeklyTargetMet()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /** Whether the office location has been calibrated. */
+    val isLocationCalibrated: StateFlow<Boolean> =
+        settingsRepository.isLocationCalibrated
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Whether an auto check-in was triggered (for dashboard note). */
+    val autoCheckInTriggered: StateFlow<Boolean> =
+        settingsRepository.autoCheckInTriggered
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     private val _error = MutableStateFlow<String?>(null)
     /** Transient error message for UI display; cleared after showing. */
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -112,6 +124,23 @@ class DashboardViewModel(
     /** Call from the UI after displaying the error to clear it. */
     fun clearError() {
         _error.value = null
+    }
+
+    fun clearAutoCheckInNote() {
+        viewModelScope.launch {
+            settingsRepository.clearAutoCheckInTriggered()
+        }
+    }
+
+    fun onCalibrateLocation(latitude: Double, longitude: Double) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.calibrateLocation(latitude, longitude)
+                geofenceManager?.reRegisterGeofence()
+            } catch (e: Exception) {
+                _error.value = "Failed to calibrate: ${e.message}"
+            }
+        }
     }
 
     /**

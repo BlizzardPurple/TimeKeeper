@@ -318,8 +318,10 @@ class AttendanceRepository(
         // Check target
         val targetDays = settingsDataStore.getTargetDaysPerWeek()
         val targetHoursPerDay = settingsDataStore.getTargetHoursPerDay()
-        val targetWeeklyMs = targetDays.toLong() * targetHoursPerDay * MS_PER_HOUR
-        val targetMet = daysAttended >= targetDays && totalMs >= targetWeeklyMs
+        val absences = settingsDataStore.getAbsencesThisWeek()
+        val adjustedDays = (targetDays - absences).coerceAtLeast(0)
+        val targetWeeklyMs = adjustedDays.toLong() * targetHoursPerDay * MS_PER_HOUR
+        val targetMet = daysAttended >= adjustedDays && totalMs >= targetWeeklyMs
 
         // Create summary
         val summary = WeeklySummary(

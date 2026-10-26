@@ -9,12 +9,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.office.timekeeper.ui.dashboard.DashboardViewModel
 import com.office.timekeeper.ui.history.HistoryViewModel
@@ -29,18 +32,35 @@ class MainActivity : ComponentActivity() {
         private const val TAG = "MainActivity"
     }
 
+    private val appModule by lazy { (application as TimeKeeperApplication).appModule }
+
+    private val dashboardViewModel: DashboardViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return DashboardViewModel(appModule.attendanceRepository, appModule.settingsRepository, application, appModule.geofenceManager) as T
+            }
+        }
+    }
+    private val historyViewModel: HistoryViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return HistoryViewModel(appModule.attendanceRepository) as T
+            }
+        }
+    }
+    private val settingsViewModel: SettingsViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return SettingsViewModel(appModule.settingsRepository) as T
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val appModule = (application as TimeKeeperApplication).appModule
-
-        val dashboardViewModel = DashboardViewModel(
-            appModule.attendanceRepository,
-            appModule.settingsRepository,
-            application
-        )
-        val historyViewModel = HistoryViewModel(appModule.attendanceRepository)
-        val settingsViewModel = SettingsViewModel(appModule.settingsRepository)
 
         setContent {
             TimeKeeperTheme {

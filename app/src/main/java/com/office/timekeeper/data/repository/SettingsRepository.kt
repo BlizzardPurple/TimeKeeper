@@ -25,6 +25,11 @@ class SettingsRepository(
 
     val absencesThisWeek: Flow<Int> = settingsDataStore.absencesThisWeek
 
+    val isLocationCalibrated: Flow<Boolean> = settingsDataStore.isLocationCalibrated
+    val autoCheckInTriggered: Flow<Boolean> = settingsDataStore.autoCheckInTriggered
+    val calibratedLatitude: Flow<Double?> = settingsDataStore.calibratedLatitude
+    val calibratedLongitude: Flow<Double?> = settingsDataStore.calibratedLongitude
+
     // --- Write (with validation) ---
 
     /**
@@ -77,5 +82,13 @@ class SettingsRepository(
             "Absences must be between 0 and 4, got $absences."
         }
         settingsDataStore.setAbsencesThisWeek(absences)
+    }
+
+    suspend fun calibrateLocation(latitude: Double, longitude: Double) {
+        settingsDataStore.setCalibratedLocation(latitude, longitude)
+    }
+
+    suspend fun clearAutoCheckInTriggered() {
+        settingsDataStore.setAutoCheckInTriggered(false)
     }
 }

@@ -37,10 +37,7 @@ import androidx.glance.text.TextStyle
 import com.office.timekeeper.MainActivity
 import com.office.timekeeper.data.datastore.SettingsDataStore
 import com.office.timekeeper.data.db.AppDatabase
-import com.office.timekeeper.data.db.TimeSession
-import com.office.timekeeper.domain.WeekBoundaryUtil
-import java.time.DayOfWeek
-import java.time.LocalDate
+import com.office.timekeeper.data.repository.AttendanceRepository
 
 // Reusable color providers
 private val GreenDot = ColorProvider(
@@ -208,38 +205,18 @@ class ToggleCheckInAction : ActionCallback {
         parameters: androidx.glance.action.ActionParameters
     ) {
         val db = AppDatabase.getInstance(context)
-        val timeSessionDao = db.timeSessionDao()
         val settingsDs = SettingsDataStore(context.widgetSettingsDataStore)
+        val repo = AttendanceRepository(db.timeSessionDao(), db.weeklySummaryDao(), db.archivedTimeSessionDao(), settingsDs)
 
         try {
-            val openSession = timeSessionDao.getOpenSessionSnapshot()
-
+            val openSession = db.timeSessionDao().getOpenSessionSnapshot()
             if (openSession != null) {
-                // Check out the active session
-                val nowMs = System.currentTimeMillis()
-                val duration = nowMs - openSession.checkInTime
-                val updated = openSession.copy(
-                    checkOutTime = nowMs,
-                    durationMs = duration
-                )
-                timeSessionDao.update(updated)
-                settingsDs.setActiveSessionId(null)
+                repo.checkOut(openSession.id)
             } else {
-                // Check in — weekdays only
-                val today = LocalDate.now(WeekBoundaryUtil.IST)
-                if (today.dayOfWeek in DayOfWeek.MONDAY..DayOfWeek.FRIDAY) {
-                    val session = TimeSession(
-                        date = today.toString(),
-                        checkInTime = System.currentTimeMillis(),
-                        checkOutTime = null,
-                        durationMs = 0
-                    )
-                    val id = timeSessionDao.insert(session)
-                    settingsDs.setActiveSessionId(id)
-                }
+                repo.checkIn()
             }
         } catch (_: Exception) {
-            // Silently handle errors — widget shows stale state until next refresh
+            // Silently handle — widget will show stale until next refresh
         }
 
         // Refresh the widget to reflect updated state

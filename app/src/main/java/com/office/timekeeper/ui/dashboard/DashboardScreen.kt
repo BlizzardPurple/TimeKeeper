@@ -1,5 +1,7 @@
 package com.office.timekeeper.ui.dashboard
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,24 +23,30 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.android.gms.location.LocationServices
 import com.office.timekeeper.domain.WeekBoundaryUtil
 import kotlinx.coroutines.delay
 import java.time.DayOfWeek
@@ -64,6 +72,8 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
     val isWeeklyTargetMet by viewModel.isWeeklyTargetMet.collectAsStateWithLifecycle()
     val absences by viewModel.absences.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val isLocationCalibrated by viewModel.isLocationCalibrated.collectAsStateWithLifecycle()
+    val autoCheckInTriggered by viewModel.autoCheckInTriggered.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -113,6 +123,29 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
                 sessionElapsedMs = sessionElapsedMs
             )
 
+            // Auto check-in note
+            if (autoCheckInTriggered) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📍 Auto checked in — you were near your office",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        TextButton(onClick = { viewModel.clearAutoCheckInNote() }) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
+            }
+
             // Today's total card
             TodayTotalCard(todayTotalDuration = todayTotalDuration)
 
@@ -156,6 +189,14 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
                     isCheckedIn = isCheckedIn,
                     onCheckIn = viewModel::onCheckIn,
                     onCheckOut = viewModel::onCheckOut
+                )
+            }
+
+            // Calibrate button — shown when checked in
+            if (isCheckedIn) {
+                CalibrateLocationButton(
+                    isCalibrated = isLocationCalibrated,
+                    onCalibrate = { lat, lng -> viewModel.onCalibrateLocation(lat, lng) }
                 )
             }
         }
@@ -416,6 +457,45 @@ private fun WeekendMessage() {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp)
+        )
+    }
+}
+
+/**
+ * Button to calibrate or recalibrate the office location using current GPS.
+ */
+@Composable
+private fun CalibrateLocationButton(
+    isCalibrated: Boolean,
+    onCalibrate: (Double, Double) -> Unit
+) {
+    val context = LocalContext.current
+    var isCalibrating by remember { mutableStateOf(false) }
+
+    OutlinedButton(
+        onClick = {
+            isCalibrating = true
+            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                @Suppress("MissingPermission")
+                fusedClient.lastLocation.addOnSuccessListener { location ->
+                    if (location != null) {
+                        onCalibrate(location.latitude, location.longitude)
+                    }
+                    isCalibrating = false
+                }.addOnFailureListener {
+                    isCalibrating = false
+                }
+            } else {
+                isCalibrating = false
+            }
+        },
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        enabled = !isCalibrating
+    ) {
+        Text(
+            text = if (isCalibrating) "Calibrating..." else if (isCalibrated) "📍 Recalibrate Location" else "📍 Calibrate Office Location",
+            style = MaterialTheme.typography.bodyMedium
         )
     }
 }

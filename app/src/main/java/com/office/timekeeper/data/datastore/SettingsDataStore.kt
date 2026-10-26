@@ -2,10 +2,12 @@ package com.office.timekeeper.data.datastore
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -25,6 +27,13 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
 
         val ABSENCES_THIS_WEEK = intPreferencesKey("absences_this_week")
         const val DEFAULT_ABSENCES = 0
+
+        // Calibrated office location
+        val CALIBRATED_LATITUDE = stringPreferencesKey("calibrated_latitude")   // stored as String to avoid Float precision loss
+        val CALIBRATED_LONGITUDE = stringPreferencesKey("calibrated_longitude")
+        val IS_LOCATION_CALIBRATED = booleanPreferencesKey("is_location_calibrated")
+        val AUTO_CHECK_IN_ENABLED = booleanPreferencesKey("auto_check_in_enabled")  // default true
+        val AUTO_CHECK_IN_TRIGGERED = booleanPreferencesKey("auto_check_in_triggered")
     }
 
     // --- Flows with defaults ---
@@ -48,6 +57,12 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
     val absencesThisWeek: Flow<Int> = dataStore.data.map { prefs ->
         prefs[ABSENCES_THIS_WEEK] ?: DEFAULT_ABSENCES
     }
+
+    val calibratedLatitude: Flow<Double?> = dataStore.data.map { it[CALIBRATED_LATITUDE]?.toDoubleOrNull() }
+    val calibratedLongitude: Flow<Double?> = dataStore.data.map { it[CALIBRATED_LONGITUDE]?.toDoubleOrNull() }
+    val isLocationCalibrated: Flow<Boolean> = dataStore.data.map { it[IS_LOCATION_CALIBRATED] ?: false }
+    val autoCheckInEnabled: Flow<Boolean> = dataStore.data.map { it[AUTO_CHECK_IN_ENABLED] ?: true }
+    val autoCheckInTriggered: Flow<Boolean> = dataStore.data.map { it[AUTO_CHECK_IN_TRIGGERED] ?: false }
 
     // --- Derived ---
 
@@ -93,6 +108,30 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
         }
     }
 
+    suspend fun setCalibratedLocation(latitude: Double, longitude: Double) {
+        dataStore.edit { prefs ->
+            prefs[CALIBRATED_LATITUDE] = latitude.toString()
+            prefs[CALIBRATED_LONGITUDE] = longitude.toString()
+            prefs[IS_LOCATION_CALIBRATED] = true
+        }
+    }
+
+    suspend fun clearCalibratedLocation() {
+        dataStore.edit { prefs ->
+            prefs.remove(CALIBRATED_LATITUDE)
+            prefs.remove(CALIBRATED_LONGITUDE)
+            prefs[IS_LOCATION_CALIBRATED] = false
+        }
+    }
+
+    suspend fun setAutoCheckInEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[AUTO_CHECK_IN_ENABLED] = enabled }
+    }
+
+    suspend fun setAutoCheckInTriggered(triggered: Boolean) {
+        dataStore.edit { prefs -> prefs[AUTO_CHECK_IN_TRIGGERED] = triggered }
+    }
+
     // --- Snapshot getters (suspend, for use in workers) ---
 
     suspend fun getTargetDaysPerWeek(): Int {
@@ -106,4 +145,8 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
     suspend fun getAbsencesThisWeek(): Int {
         return dataStore.data.first()[ABSENCES_THIS_WEEK] ?: DEFAULT_ABSENCES
     }
+
+    suspend fun getCalibratedLatitude(): Double? = dataStore.data.first()[CALIBRATED_LATITUDE]?.toDoubleOrNull()
+    suspend fun getCalibratedLongitude(): Double? = dataStore.data.first()[CALIBRATED_LONGITUDE]?.toDoubleOrNull()
+    suspend fun isLocationCalibratedSnapshot(): Boolean = dataStore.data.first()[IS_LOCATION_CALIBRATED] ?: false
 }

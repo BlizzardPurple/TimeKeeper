@@ -24,5 +24,8 @@ class TimeKeeperApplication : Application() {
         // Create notification channels early so they are available
         // before any worker or receiver fires a notification.
         appModule.notificationHelper.createNotificationChannels()
+
+        // Schedule weekly reset worker on app start (not just on reboot)
+        com.office.timekeeper.worker.WeeklyResetWorker.schedule(this)
     }
 }
