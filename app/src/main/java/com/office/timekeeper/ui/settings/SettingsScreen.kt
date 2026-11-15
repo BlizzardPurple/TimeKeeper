@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +70,8 @@ fun SettingsScreen(
     val calibratedLat by viewModel.calibratedLatitude.collectAsStateWithLifecycle()
     val calibratedLng by viewModel.calibratedLongitude.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val weatherEnabled by viewModel.weatherEnabled.collectAsStateWithLifecycle()
+    val commuteBuffer by viewModel.commuteBuffer.collectAsStateWithLifecycle()
 
     // Show validation errors as snackbar
     LaunchedEffect(error) {
@@ -170,6 +173,46 @@ fun SettingsScreen(
             calibratedLng = calibratedLng,
             onCalibrate = { lat, lng -> viewModel.onCalibrateLocation(lat, lng) }
         )
+
+        // --- Weather Suggestions ---
+        SettingCard(
+            icon = Icons.Outlined.Info,
+            title = "Weather Suggestions",
+            description = "Get notified about rain and smart departure times. Uses Open-Meteo (free, no account needed).",
+            accessibilityLabel = "Weather suggestions setting"
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (weatherEnabled) "Enabled" else "Disabled",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Switch(
+                    checked = weatherEnabled,
+                    onCheckedChange = { viewModel.onWeatherEnabledChanged(it) }
+                )
+            }
+        }
+
+        if (weatherEnabled) {
+            SettingCard(
+                icon = Icons.Outlined.Info,
+                title = "Commute Buffer",
+                description = "How many minutes before rain should we suggest leaving?",
+                accessibilityLabel = "Commute buffer setting"
+            ) {
+                StepSlider(
+                    value = commuteBuffer,
+                    valueRange = 5..60,
+                    label = { "$it min" },
+                    onValueChange = { viewModel.onCommuteBufferChanged(it) },
+                    accessibilityLabel = "Commute buffer: $commuteBuffer minutes"
+                )
+            }
+        }
 
         // Weekly target summary
         WeeklyTargetSummary(days = targetDays, hoursPerDay = targetHours, absences = absences)

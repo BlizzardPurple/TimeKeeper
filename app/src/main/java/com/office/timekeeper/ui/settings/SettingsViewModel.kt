@@ -64,6 +64,14 @@ class SettingsViewModel(
     /** Transient error message for UI display; cleared after showing. */
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    val weatherEnabled: StateFlow<Boolean> =
+        settingsRepository.weatherSuggestionsEnabled
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    val commuteBuffer: StateFlow<Int> =
+        settingsRepository.commuteBufferMinutes
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 15)
+
     /**
      * Updates the target days per week.
      *
@@ -141,6 +149,26 @@ class SettingsViewModel(
                 geofenceManager?.reRegisterGeofence()
             } catch (e: Exception) {
                 _error.value = "Failed to calibrate: ${e.message}"
+            }
+        }
+    }
+
+    fun onWeatherEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.setWeatherSuggestionsEnabled(enabled)
+            } catch (e: Exception) {
+                _error.value = e.message
+            }
+        }
+    }
+
+    fun onCommuteBufferChanged(minutes: Int) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.setCommuteBufferMinutes(minutes)
+            } catch (e: IllegalArgumentException) {
+                _error.value = e.message
             }
         }
     }

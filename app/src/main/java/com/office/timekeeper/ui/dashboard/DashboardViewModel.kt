@@ -1,19 +1,21 @@
 package com.office.timekeeper.ui.dashboard
 
 import android.app.Application
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.office.timekeeper.data.db.TimeSession
 import com.office.timekeeper.data.repository.AttendanceRepository
 import com.office.timekeeper.data.repository.SettingsRepository
+import com.office.timekeeper.domain.WeatherService
 import com.office.timekeeper.domain.WeekBoundaryUtil
 import com.office.timekeeper.geofence.GeofenceManager
-import com.office.timekeeper.widget.TimeKeeperWidget
+import com.office.timekeeper.widget.TimeKeeperWidgetProvider
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -83,6 +85,23 @@ class DashboardViewModel(
     /** Transient error message for UI display; cleared after showing. */
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _weatherSuggestion = MutableStateFlow<WeatherService.WeatherSuggestion?>(null)
+    val weatherSuggestion: StateFlow<WeatherService.WeatherSuggestion?> = _weatherSuggestion.asStateFlow()
+
+    val weatherEnabled: StateFlow<Boolean> =
+        settingsRepository.weatherSuggestionsEnabled
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    init {
+        // Refresh weather every 30 minutes while the ViewModel is active
+        viewModelScope.launch {
+            while (true) {
+                refreshWeather()
+                delay(30 * 60 * 1000L) // 30 min
+            }
+        }
+    }
+
     /**
      * Initiates a check-in. On success the reactive StateFlows update
      * automatically through Room/DataStore. On failure the error is
@@ -131,15 +150,38 @@ class DashboardViewModel(
      * Pushes an immediate update to every placed TimeKeeperWidget instance
      * so the home-screen widget reflects the latest attendance state.
      */
-    private suspend fun refreshWidgets() {
-        try {
-            val widget = TimeKeeperWidget()
-            val manager = GlanceAppWidgetManager(application)
-            manager.getGlanceIds(widget.javaClass).forEach { glanceId ->
-                widget.update(application, glanceId)
+    private fun refreshWidgets() {
+        TimeKeeperWidgetProvider.updateAllWidgets(application)
+    }
+
+    fun refreshWeather() {
+        viewModelScope.launch {
+            try {
+                val enabled = settingsRepository.weatherSuggestionsEnabled.first()
+                if (!enabled) {
+                    _weatherSuggestion.value = null
+                    return@launch
+                }
+                val lat = settingsRepository.calibratedLatitude.first()
+                val lng = settingsRepository.calibratedLongitude.first()
+                if (lat == null || lng == null) return@launch
+
+                val forecasts = WeatherService.fetchForecast(lat, lng) ?: return@launch
+
+                // Calculate remaining minutes
+                val weekTotalMs = weekTotalDuration.value
+                val targetDaysVal = targetDays.value
+                val absencesVal = absences.value
+                val adjustedDays = (targetDaysVal - absencesVal).coerceAtLeast(0)
+                val targetWeeklyMs = adjustedDays * 8L * 3_600_000L
+                val remainingMs = (targetWeeklyMs - weekTotalMs).coerceAtLeast(0)
+                val remainingMinutes = remainingMs / 60_000
+
+                val commuteBuffer = settingsRepository.commuteBufferMinutes.first()
+                _weatherSuggestion.value = WeatherService.generateSuggestion(forecasts, remainingMinutes, commuteBuffer)
+            } catch (_: Exception) {
+                _weatherSuggestion.value = null
             }
-        } catch (_: Exception) {
-            // Widget refresh is best-effort; don't surface errors to the user
         }
     }
 }

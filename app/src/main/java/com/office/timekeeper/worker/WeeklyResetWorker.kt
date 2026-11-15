@@ -11,8 +11,7 @@ import com.office.timekeeper.data.datastore.SettingsDataStore
 import com.office.timekeeper.data.db.AppDatabase
 import com.office.timekeeper.data.repository.AttendanceRepository
 import com.office.timekeeper.domain.WeekBoundaryUtil
-import androidx.glance.appwidget.GlanceAppWidgetManager
-import com.office.timekeeper.widget.TimeKeeperWidget
+import com.office.timekeeper.widget.TimeKeeperWidgetProvider
 import com.office.timekeeper.widget.widgetSettingsDataStore
 import java.util.concurrent.TimeUnit
 
@@ -51,14 +50,10 @@ class WeeklyResetWorker(
 
             // 2b. Reset absences for the new week
             settingsDs.setAbsencesThisWeek(0)
+            settingsDs.setLastWeeklyResetMs(System.currentTimeMillis())
 
             // 3. Update all widget instances to show the fresh week (0h, 0 days)
-            val widget = TimeKeeperWidget()
-            val manager = GlanceAppWidgetManager(applicationContext)
-            val glanceIds = manager.getGlanceIds(widget.javaClass)
-            glanceIds.forEach { glanceId ->
-                widget.update(applicationContext, glanceId)
-            }
+            TimeKeeperWidgetProvider.updateAllWidgets(applicationContext)
 
             // 4. Reschedule for the next Sunday 12:00 PM IST
             schedule(applicationContext)

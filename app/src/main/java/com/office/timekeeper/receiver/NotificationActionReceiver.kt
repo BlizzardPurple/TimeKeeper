@@ -3,12 +3,11 @@ package com.office.timekeeper.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import com.office.timekeeper.data.datastore.SettingsDataStore
 import com.office.timekeeper.data.db.AppDatabase
 import com.office.timekeeper.data.repository.AttendanceRepository
 import com.office.timekeeper.domain.NotificationHelper
-import com.office.timekeeper.widget.TimeKeeperWidget
+import com.office.timekeeper.widget.TimeKeeperWidgetProvider
 import com.office.timekeeper.widget.widgetSettingsDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,12 +45,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             )
                             repo.checkIn()
 
-                            // Refresh the Glance widget to reflect checked-in state
-                            val widget = TimeKeeperWidget()
-                            val manager = GlanceAppWidgetManager(context)
-                            manager.getGlanceIds(widget.javaClass).forEach { glanceId ->
-                                widget.update(context, glanceId)
-                            }
+                            // Refresh the widget to reflect checked-in state
+                            TimeKeeperWidgetProvider.updateAllWidgets(context)
                         } catch (_: Exception) {
                             // Silently handle errors (e.g., weekend check-in, already checked in)
                         }
@@ -78,12 +73,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                 repo.checkOut(openSession.id)
                             }
 
-                            // Refresh the Glance widget to reflect checked-out state
-                            val widget = TimeKeeperWidget()
-                            val manager = GlanceAppWidgetManager(context)
-                            manager.getGlanceIds(widget.javaClass).forEach { glanceId ->
-                                widget.update(context, glanceId)
-                            }
+                            // Refresh the widget to reflect checked-out state
+                            TimeKeeperWidgetProvider.updateAllWidgets(context)
                         } catch (_: Exception) {
                             // Silently handle errors (e.g., no open session found)
                         }

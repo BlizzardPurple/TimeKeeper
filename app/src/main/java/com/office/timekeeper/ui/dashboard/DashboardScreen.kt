@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.office.timekeeper.domain.WeatherService
 import com.office.timekeeper.domain.WeekBoundaryUtil
 import kotlinx.coroutines.delay
 import java.time.DayOfWeek
@@ -66,6 +67,8 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
     val absences by viewModel.absences.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val autoCheckInTriggered by viewModel.autoCheckInTriggered.collectAsStateWithLifecycle()
+    val weatherSuggestion by viewModel.weatherSuggestion.collectAsStateWithLifecycle()
+    val weatherEnabled by viewModel.weatherEnabled.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -150,6 +153,11 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
                 absences = absences,
                 isWeeklyTargetMet = isWeeklyTargetMet
             )
+
+            // Weather suggestion card (only when enabled and has data)
+            if (weatherEnabled && weatherSuggestion != null) {
+                WeatherCard(suggestion = weatherSuggestion!!)
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -442,6 +450,38 @@ private fun WeekendMessage() {
                 .fillMaxWidth()
                 .padding(20.dp)
         )
+    }
+}
+
+/**
+ * Weather suggestion card showing forecast and smart departure advice.
+ */
+@Composable
+private fun WeatherCard(suggestion: WeatherService.WeatherSuggestion) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Weather suggestion" },
+        colors = CardDefaults.cardColors(
+            containerColor = if (suggestion.hasRainSoon)
+                MaterialTheme.colorScheme.secondaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = suggestion.currentWeatherDesc,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = suggestion.suggestion,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
     }
 }
 

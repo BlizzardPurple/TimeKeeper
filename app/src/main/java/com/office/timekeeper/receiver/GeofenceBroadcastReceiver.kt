@@ -11,9 +11,8 @@ import com.office.timekeeper.data.db.AppDatabase
 import com.office.timekeeper.data.repository.AttendanceRepository
 import com.office.timekeeper.domain.NotificationHelper
 import com.office.timekeeper.geofence.GeofenceManager
-import com.office.timekeeper.widget.TimeKeeperWidget
+import com.office.timekeeper.widget.TimeKeeperWidgetProvider
 import com.office.timekeeper.widget.widgetSettingsDataStore
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -64,6 +63,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             }
                         }
                         if (GeofenceManager.GEOFENCE_ID_OUTER in geofenceIds) {
+                            // Cancel any pending departure notification (user came back within 5 min)
+                            androidx.work.WorkManager.getInstance(context).cancelUniqueWork("departure_notification")
                             // Outer ring (100m) — show notification if not checked in
                             val openSession = db.timeSessionDao().getOpenSessionSnapshot()
                             if (openSession == null) {
@@ -76,13 +77,19 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     }
                     Geofence.GEOFENCE_TRANSITION_EXIT -> {
                         if (GeofenceManager.GEOFENCE_ID_OUTER in geofenceIds) {
-                            // Leaving 100m zone — show checkout notification if checked in
                             val openSession = db.timeSessionDao().getOpenSessionSnapshot()
                             if (openSession != null) {
-                                notificationHelper.notify(
-                                    NotificationHelper.NOTIFICATION_GEOFENCE_DEPARTURE,
-                                    notificationHelper.buildGeofenceDepartureNotification()
-                                )
+                                // Schedule delayed checkout notification (5 min dwell)
+                                val delayedWork = androidx.work.OneTimeWorkRequestBuilder<com.office.timekeeper.worker.DepartureNotificationWorker>()
+                                    .setInitialDelay(5, java.util.concurrent.TimeUnit.MINUTES)
+                                    .build()
+                                androidx.work.WorkManager.getInstance(context)
+                                    .enqueueUniqueWork(
+                                        "departure_notification",
+                                        androidx.work.ExistingWorkPolicy.REPLACE,
+                                        delayedWork
+                                    )
+                                Log.d(TAG, "Scheduled departure notification in 5 minutes")
                             }
                         }
                     }
@@ -95,13 +102,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
-    private suspend fun refreshWidgets(context: Context) {
-        try {
-            val widget = TimeKeeperWidget()
-            val manager = GlanceAppWidgetManager(context)
-            manager.getGlanceIds(widget.javaClass).forEach { glanceId ->
-                widget.update(context, glanceId)
-            }
-        } catch (_: Exception) {}
+    private fun refreshWidgets(context: Context) {
+        TimeKeeperWidgetProvider.updateAllWidgets(context)
     }
 }

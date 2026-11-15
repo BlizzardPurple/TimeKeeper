@@ -34,6 +34,10 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
         val IS_LOCATION_CALIBRATED = booleanPreferencesKey("is_location_calibrated")
         val AUTO_CHECK_IN_ENABLED = booleanPreferencesKey("auto_check_in_enabled")  // default true
         val AUTO_CHECK_IN_TRIGGERED = booleanPreferencesKey("auto_check_in_triggered")
+
+        val WEATHER_SUGGESTIONS_ENABLED = booleanPreferencesKey("weather_suggestions_enabled") // default false (opt-in)
+        val COMMUTE_BUFFER_MINUTES = intPreferencesKey("commute_buffer_minutes") // default 15
+        val LAST_WEEKLY_RESET_MS = longPreferencesKey("last_weekly_reset_ms") // epoch ms of last successful reset
     }
 
     // --- Flows with defaults ---
@@ -63,6 +67,10 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
     val isLocationCalibrated: Flow<Boolean> = dataStore.data.map { it[IS_LOCATION_CALIBRATED] ?: false }
     val autoCheckInEnabled: Flow<Boolean> = dataStore.data.map { it[AUTO_CHECK_IN_ENABLED] ?: true }
     val autoCheckInTriggered: Flow<Boolean> = dataStore.data.map { it[AUTO_CHECK_IN_TRIGGERED] ?: false }
+
+    val weatherSuggestionsEnabled: Flow<Boolean> = dataStore.data.map { it[WEATHER_SUGGESTIONS_ENABLED] ?: false }
+    val commuteBufferMinutes: Flow<Int> = dataStore.data.map { it[COMMUTE_BUFFER_MINUTES] ?: 15 }
+    val lastWeeklyResetMs: Flow<Long> = dataStore.data.map { it[LAST_WEEKLY_RESET_MS] ?: 0L }
 
     // --- Derived ---
 
@@ -132,6 +140,18 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { prefs -> prefs[AUTO_CHECK_IN_TRIGGERED] = triggered }
     }
 
+    suspend fun setWeatherSuggestionsEnabled(enabled: Boolean) {
+        dataStore.edit { it[WEATHER_SUGGESTIONS_ENABLED] = enabled }
+    }
+
+    suspend fun setCommuteBufferMinutes(minutes: Int) {
+        dataStore.edit { it[COMMUTE_BUFFER_MINUTES] = minutes }
+    }
+
+    suspend fun setLastWeeklyResetMs(ms: Long) {
+        dataStore.edit { it[LAST_WEEKLY_RESET_MS] = ms }
+    }
+
     // --- Snapshot getters (suspend, for use in workers) ---
 
     suspend fun getTargetDaysPerWeek(): Int {
@@ -149,4 +169,6 @@ class SettingsDataStore(private val dataStore: DataStore<Preferences>) {
     suspend fun getCalibratedLatitude(): Double? = dataStore.data.first()[CALIBRATED_LATITUDE]?.toDoubleOrNull()
     suspend fun getCalibratedLongitude(): Double? = dataStore.data.first()[CALIBRATED_LONGITUDE]?.toDoubleOrNull()
     suspend fun isLocationCalibratedSnapshot(): Boolean = dataStore.data.first()[IS_LOCATION_CALIBRATED] ?: false
+
+    suspend fun getLastWeeklyResetMs(): Long = dataStore.data.first()[LAST_WEEKLY_RESET_MS] ?: 0L
 }

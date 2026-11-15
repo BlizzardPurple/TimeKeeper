@@ -257,6 +257,12 @@ private fun TargetMetIndicator(targetMet: Boolean) {
 @Composable
 private fun DailySessionGroup(date: String, sessions: List<ArchivedTimeSession>) {
     val dailyTotal = sessions.sumOf { it.durationMs }
+    val formattedDate = try {
+        val localDate = java.time.LocalDate.parse(date)
+        localDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d"))
+    } catch (_: Exception) {
+        date
+    }
 
     Column {
         Row(
@@ -264,7 +270,7 @@ private fun DailySessionGroup(date: String, sessions: List<ArchivedTimeSession>)
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = date,
+                text = formattedDate,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Medium
             )
@@ -279,6 +285,21 @@ private fun DailySessionGroup(date: String, sessions: List<ArchivedTimeSession>)
 
         for (session in sessions) {
             SessionRow(session = session)
+        }
+
+        // Daily total line
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, top = 4.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Text(
+                text = "Daily Total: ${formatDuration(dailyTotal)}",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
@@ -310,7 +331,7 @@ private fun SessionRow(session: ArchivedTimeSession) {
 // --- Formatting Helpers ---
 
 private val IST: ZoneId = ZoneId.of("Asia/Kolkata")
-private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(IST)
+private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a").withZone(IST)
 
 /**
  * Formats a duration in milliseconds as "Xh Ym" (e.g., "24h 30m").

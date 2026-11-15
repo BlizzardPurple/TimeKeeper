@@ -30,6 +30,9 @@ class SettingsRepository(
     val calibratedLatitude: Flow<Double?> = settingsDataStore.calibratedLatitude
     val calibratedLongitude: Flow<Double?> = settingsDataStore.calibratedLongitude
 
+    val weatherSuggestionsEnabled: Flow<Boolean> = settingsDataStore.weatherSuggestionsEnabled
+    val commuteBufferMinutes: Flow<Int> = settingsDataStore.commuteBufferMinutes
+
     // --- Write (with validation) ---
 
     /**
@@ -90,5 +93,14 @@ class SettingsRepository(
 
     suspend fun clearAutoCheckInTriggered() {
         settingsDataStore.setAutoCheckInTriggered(false)
+    }
+
+    suspend fun setWeatherSuggestionsEnabled(enabled: Boolean) {
+        settingsDataStore.setWeatherSuggestionsEnabled(enabled)
+    }
+
+    suspend fun setCommuteBufferMinutes(minutes: Int) {
+        require(minutes in 5..60) { "Commute buffer must be between 5 and 60 minutes." }
+        settingsDataStore.setCommuteBufferMinutes(minutes)
     }
 }
