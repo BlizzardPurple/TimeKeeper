@@ -46,7 +46,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.office.timekeeper.data.db.ArchivedTimeSession
+import com.office.timekeeper.data.db.TimeSession
 import com.office.timekeeper.data.db.WeeklySummary
+import com.office.timekeeper.domain.WeekBoundaryUtil
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -62,8 +64,9 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun HistoryScreen(viewModel: HistoryViewModel) {
     val archivedWeeks by viewModel.archivedWeeks.collectAsStateWithLifecycle()
+    val currentWeekSessions by viewModel.currentWeekSessions.collectAsStateWithLifecycle()
 
-    if (archivedWeeks.isEmpty()) {
+    if (archivedWeeks.isEmpty() && currentWeekSessions.isEmpty()) {
         EmptyHistoryState()
     } else {
         LazyColumn(
@@ -71,6 +74,14 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Current week (live, unarchived)
+            if (currentWeekSessions.isNotEmpty()) {
+                item(key = "current_week") {
+                    CurrentWeekCard(sessions = currentWeekSessions)
+                }
+            }
+
+            // Archived weeks
             items(archivedWeeks, key = { it.id }) { summary ->
                 WeekCard(summary = summary, viewModel = viewModel)
             }
@@ -91,6 +102,171 @@ private fun EmptyHistoryState() {
             text = "No archived weeks yet",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * Card showing the current (unarchived) week's sessions.
+ * Always visible at the top of history so the user can see this week's data.
+ */
+@Composable
+private fun CurrentWeekCard(sessions: List<TimeSession>) {
+    val weekStart = WeekBoundaryUtil.getCurrentWeekStart()
+    val weekEnd = WeekBoundaryUtil.getCurrentWeekEnd()
+    var expanded by remember { mutableStateOf(true) } // expanded by default
+
+    val totalMs = sessions.filter { it.checkOutTime != null }.sumOf { it.durationMs }
+    val sessionsByDate = sessions.groupBy { it.date }
+    val formattedStart = try {
+        weekStart.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+    } catch (_: Exception) { weekStart.toString() }
+    val formattedEnd = try {
+        weekEnd.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+    } catch (_: Exception) { weekEnd.toString() }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded }
+            .semantics { contentDescription = "Current week" },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "This Week",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Text(
+                        text = "$formattedStart – $formattedEnd",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Text(
+                    text = formatDuration(totalMs),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val sortedDates = sessionsByDate.keys.sorted()
+                    for (date in sortedDates) {
+                        val daySessions = sessionsByDate[date] ?: continue
+                        CurrentDaySessionGroup(date = date, sessions = daySessions)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A group of current-week sessions for a single date.
+ * Similar to DailySessionGroup but uses TimeSession instead of ArchivedTimeSession.
+ */
+@Composable
+private fun CurrentDaySessionGroup(date: String, sessions: List<TimeSession>) {
+    val dailyTotal = sessions.filter { it.checkOutTime != null }.sumOf { it.durationMs }
+    val formattedDate = try {
+        val localDate = java.time.LocalDate.parse(date)
+        localDate.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d"))
+    } catch (_: Exception) { date }
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formattedDate,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                text = formatDuration(dailyTotal),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        for (session in sessions) {
+            CurrentSessionRow(session = session)
+        }
+        if (sessions.any { it.checkOutTime != null }) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Text(
+                    text = "Daily Total: ${formatDuration(dailyTotal)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A single current-week session row.
+ */
+@Composable
+private fun CurrentSessionRow(session: TimeSession) {
+    val checkOutText = if (session.checkOutTime != null) {
+        formatEpochAsTime(session.checkOutTime)
+    } else {
+        "In progress…"
+    }
+    val durationText = if (session.checkOutTime != null) {
+        formatDuration(session.durationMs)
+    } else {
+        val elapsed = System.currentTimeMillis() - session.checkInTime
+        "~${formatDuration(elapsed)}"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "${formatEpochAsTime(session.checkInTime)} – $checkOutText",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        Text(
+            text = durationText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
         )
     }
 }

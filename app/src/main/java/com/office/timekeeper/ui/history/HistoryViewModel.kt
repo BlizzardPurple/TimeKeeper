@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.office.timekeeper.data.db.ArchivedTimeSession
+import com.office.timekeeper.data.db.TimeSession
 import com.office.timekeeper.data.db.WeeklySummary
 import com.office.timekeeper.data.repository.AttendanceRepository
 import com.office.timekeeper.domain.CsvExporter
@@ -31,6 +32,17 @@ class HistoryViewModel(
      */
     val archivedWeeks: StateFlow<List<WeeklySummary>> =
         attendanceRepository.getArchivedWeeks()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList()
+            )
+
+    /**
+     * Current (unarchived) week's sessions, for display at the top of history.
+     */
+    val currentWeekSessions: StateFlow<List<TimeSession>> =
+        attendanceRepository.getSessionsForCurrentWeek()
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
