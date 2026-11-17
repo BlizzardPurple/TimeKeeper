@@ -24,6 +24,7 @@ import com.office.timekeeper.ui.history.HistoryViewModel
 import com.office.timekeeper.ui.navigation.NavGraph
 import com.office.timekeeper.ui.settings.SettingsViewModel
 import com.office.timekeeper.ui.theme.TimeKeeperTheme
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -61,6 +62,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Re-register geofence on every resume to combat Samsung battery optimization killing it
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                try {
+                    val hasFine = ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val hasBg = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    } else true
+                    if (hasFine && hasBg) {
+                        appModule.geofenceManager.registerGeofence()
+                        Log.d(TAG, "Geofence re-registered on resume")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to re-register geofence on resume", e)
+                }
+            }
+        }
 
         setContent {
             TimeKeeperTheme {

@@ -1,13 +1,12 @@
 package com.office.timekeeper.widget
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.SystemClock
-import android.view.View
 import android.widget.RemoteViews
 import com.office.timekeeper.MainActivity
 import com.office.timekeeper.R
@@ -26,6 +25,8 @@ class TimeKeeperWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_TOGGLE = "com.office.timekeeper.WIDGET_TOGGLE"
         private const val MIN_MS_FOR_ATTENDANCE = 4 * 3_600_000L
+        private const val REFRESH_REQUEST_CODE = 999
+        private const val REFRESH_INTERVAL_MS = 60_000L // 1 minute
 
         fun updateAllWidgets(context: Context) {
             val intent = Intent(context, TimeKeeperWidgetProvider::class.java).apply {
@@ -38,6 +39,46 @@ class TimeKeeperWidgetProvider : AppWidgetProvider() {
                 )
             }
             context.sendBroadcast(intent)
+        }
+
+        /**
+         * Schedules a repeating alarm to refresh the widget every 60 seconds.
+         * Called when the user checks in so the "Xh Ym" display stays current.
+         */
+        fun scheduleMinuteRefresh(context: Context) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val pendingIntent = getRefreshPendingIntent(context)
+            alarmManager.setRepeating(
+                AlarmManager.RTC,
+                System.currentTimeMillis() + REFRESH_INTERVAL_MS,
+                REFRESH_INTERVAL_MS,
+                pendingIntent
+            )
+        }
+
+        /**
+         * Cancels the minute-by-minute refresh alarm.
+         * Called when the user checks out.
+         */
+        fun cancelMinuteRefresh(context: Context) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.cancel(getRefreshPendingIntent(context))
+        }
+
+        private fun getRefreshPendingIntent(context: Context): PendingIntent {
+            val intent = Intent(context, TimeKeeperWidgetProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(
+                    AppWidgetManager.EXTRA_APPWIDGET_IDS,
+                    AppWidgetManager.getInstance(context).getAppWidgetIds(
+                        ComponentName(context, TimeKeeperWidgetProvider::class.java)
+                    )
+                )
+            }
+            return PendingIntent.getBroadcast(
+                context, REFRESH_REQUEST_CODE, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
         }
     }
 
@@ -58,6 +99,11 @@ class TimeKeeperWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        cancelMinuteRefresh(context)
+    }
+
     private suspend fun handleToggle(context: Context) {
         val db = AppDatabase.getInstance(context)
         val settingsDs = SettingsDataStore(context.widgetSettingsDataStore)
@@ -67,8 +113,10 @@ class TimeKeeperWidgetProvider : AppWidgetProvider() {
             val openSession = db.timeSessionDao().getOpenSessionSnapshot()
             if (openSession != null) {
                 repo.checkOut(openSession.id)
+                cancelMinuteRefresh(context)
             } else {
                 repo.checkIn()
+                scheduleMinuteRefresh(context)
             }
         } catch (_: Exception) {}
 
@@ -96,36 +144,28 @@ class TimeKeeperWidgetProvider : AppWidgetProvider() {
             val openSession = dao.getOpenSessionSnapshot()
             val isCheckedIn = openSession != null
 
-            // Status
+            // Status dot + text
             views.setTextViewText(R.id.status_text, if (isCheckedIn) "IN" else "OUT")
             views.setInt(R.id.status_dot, "setBackgroundColor",
-                if (isCheckedIn) 0xFF4CAF50.toInt() else 0xFF9E9E9E.toInt()
+                if (isCheckedIn) 0xFF4CAF50.toInt() else 0xFF666666.toInt()
             )
 
-            // Chronometer (live timer while checked in)
-            if (isCheckedIn) {
-                val elapsedSinceCheckIn = System.currentTimeMillis() - openSession!!.checkInTime
-                views.setViewVisibility(R.id.session_chronometer, View.VISIBLE)
-                views.setViewVisibility(R.id.today_duration, View.GONE)
-                views.setChronometer(R.id.session_chronometer,
-                    SystemClock.elapsedRealtime() - elapsedSinceCheckIn,
-                    null, true)
-            } else {
-                views.setViewVisibility(R.id.session_chronometer, View.GONE)
-                views.setViewVisibility(R.id.today_duration, View.VISIBLE)
-                // Show today's total when checked out
-                val today = LocalDate.now(WeekBoundaryUtil.IST).toString()
-                val todayMs = dao.getTotalDurationForDateSnapshot(today)
-                views.setTextViewText(R.id.today_duration, formatDuration(todayMs))
-            }
+            // Today's duration — "Xh Ym" format, includes open session elapsed
+            val todayStr = LocalDate.now(WeekBoundaryUtil.IST).toString()
+            val todayClosedMs = dao.getTotalDurationForDateSnapshot(todayStr)
+            val todayOpenMs = if (isCheckedIn) System.currentTimeMillis() - openSession!!.checkInTime else 0L
+            val todayTotalMs = todayClosedMs + todayOpenMs
+            views.setTextViewText(R.id.today_duration, formatDuration(todayTotalMs))
+            views.setTextColor(R.id.today_duration,
+                if (isCheckedIn) 0xFF4CAF50.toInt() else 0xFFBBBBBB.toInt()
+            )
 
             // Week total
             val weekStart = WeekBoundaryUtil.getCurrentWeekStart().toString()
             val weekEnd = WeekBoundaryUtil.getCurrentWeekEnd().toString()
             val weekSessions = dao.getSessionsInRangeSnapshot(weekStart, weekEnd)
             val weekClosedMs = weekSessions.filter { it.checkOutTime != null }.sumOf { it.durationMs }
-            val weekOpenMs = if (isCheckedIn) System.currentTimeMillis() - openSession!!.checkInTime else 0L
-            views.setTextViewText(R.id.week_duration, "Week: ${formatDuration(weekClosedMs + weekOpenMs)}")
+            views.setTextViewText(R.id.week_duration, "Week: ${formatDuration(weekClosedMs + todayOpenMs)}")
 
             // Days count
             val targetDays = settingsDs.getTargetDaysPerWeek()
@@ -138,11 +178,22 @@ class TimeKeeperWidgetProvider : AppWidgetProvider() {
                 val d = LocalDate.parse(dateStr)
                 d.dayOfWeek != DayOfWeek.SATURDAY && d.dayOfWeek != DayOfWeek.SUNDAY && ms >= MIN_MS_FOR_ATTENDANCE
             }
-            val targetMet = qualifyingDays >= adjustedTarget && (weekClosedMs + weekOpenMs) >= adjustedTarget * 8 * 3_600_000L
+            val totalWeekMs = weekClosedMs + todayOpenMs
+            val targetMet = qualifyingDays >= adjustedTarget && totalWeekMs >= adjustedTarget * 8 * 3_600_000L
             views.setTextViewText(R.id.days_count, "Days: $qualifyingDays/$adjustedTarget${if (targetMet) " ✓" else ""}")
 
-            // Toggle button
+            // Toggle button — RED when checked in, GREEN when out
             views.setTextViewText(R.id.toggle_button, if (isCheckedIn) "CHECK OUT" else "CHECK IN")
+            views.setInt(R.id.toggle_button, "setBackgroundColor",
+                if (isCheckedIn) 0xFFE53935.toInt() else 0xFF4CAF50.toInt()
+            )
+
+            // Manage minute refresh alarm
+            if (isCheckedIn) {
+                scheduleMinuteRefresh(context)
+            } else {
+                cancelMinuteRefresh(context)
+            }
 
         } catch (_: Exception) {
             views.setTextViewText(R.id.status_text, "OUT")

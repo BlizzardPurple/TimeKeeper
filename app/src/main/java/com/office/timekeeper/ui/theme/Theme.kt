@@ -82,7 +82,7 @@ private val DarkColorScheme = darkColorScheme(
 @Composable
 fun TimeKeeperTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,  // Use our custom dark/light scheme, not Material You
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
