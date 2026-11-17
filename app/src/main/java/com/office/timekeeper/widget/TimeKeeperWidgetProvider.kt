@@ -144,10 +144,13 @@ class TimeKeeperWidgetProvider : AppWidgetProvider() {
             val openSession = dao.getOpenSessionSnapshot()
             val isCheckedIn = openSession != null
 
-            // Status dot + text
+            // Status dot + text + border
             views.setTextViewText(R.id.status_text, if (isCheckedIn) "IN" else "OUT")
             views.setInt(R.id.status_dot, "setBackgroundColor",
                 if (isCheckedIn) 0xFF4CAF50.toInt() else 0xFF666666.toInt()
+            )
+            views.setInt(R.id.widget_root, "setBackgroundResource",
+                if (isCheckedIn) R.drawable.widget_bg_checked_in else R.drawable.widget_bg_checked_out
             )
 
             // Today's duration — "Xh Ym" format, includes open session elapsed
