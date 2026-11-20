@@ -110,6 +110,62 @@ class AttendanceRepository(
     }
 
     /**
+     * Creates a bridging session from the last check-out time to now.
+     * Used when the user leaves for dinner and comes back — the gap time
+     * gets added to today's total.
+     *
+     * Preconditions:
+     * - No open session (user must be checked out)
+     * - At least one completed session exists today
+     * - Current time is before 23:55 IST
+     * - Today is a weekday
+     *
+     * The bridging session: checkInTime = last session's checkOutTime,
+     * checkOutTime = now, durationMs = the delta.
+     */
+    suspend fun bumpUp(): TimeSession {
+        val today = LocalDate.now(WeekBoundaryUtil.IST)
+
+        require(today.dayOfWeek in DayOfWeek.MONDAY..DayOfWeek.FRIDAY) {
+            "Bump up is only allowed on weekdays."
+        }
+
+        val now = java.time.ZonedDateTime.now(WeekBoundaryUtil.IST)
+        require(now.hour < 23 || (now.hour == 23 && now.minute < 55)) {
+            "Bump up is not available after 11:55 PM."
+        }
+
+        require(timeSessionDao.getOpenSessionSnapshot() == null) {
+            "Cannot bump up while checked in. Check out first."
+        }
+
+        val todaySessions = timeSessionDao.getSessionsInRangeSnapshot(today.toString(), today.toString())
+            .filter { it.checkOutTime != null }
+            .sortedByDescending { it.checkOutTime }
+
+        require(todaySessions.isNotEmpty()) {
+            "No completed sessions today to bump up from."
+        }
+
+        val lastCheckOut = todaySessions.first().checkOutTime!!
+        val nowMs = System.currentTimeMillis()
+
+        require(nowMs > lastCheckOut) {
+            "Current time must be after the last check-out."
+        }
+
+        val duration = nowMs - lastCheckOut
+        val bridgingSession = TimeSession(
+            date = today.toString(),
+            checkInTime = lastCheckOut,
+            checkOutTime = nowMs,
+            durationMs = duration
+        )
+        val id = timeSessionDao.insert(bridgingSession)
+        return bridgingSession.copy(id = id)
+    }
+
+    /**
      * Emits `true` whenever an open session exists, `false` otherwise.
      */
     fun isCurrentlyCheckedIn(): Flow<Boolean> =

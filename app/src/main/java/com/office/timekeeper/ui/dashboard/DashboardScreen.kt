@@ -1,5 +1,6 @@
 package com.office.timekeeper.ui.dashboard
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -70,6 +72,7 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
     val autoCheckInTriggered by viewModel.autoCheckInTriggered.collectAsStateWithLifecycle()
     val weatherSuggestion by viewModel.weatherSuggestion.collectAsStateWithLifecycle()
     val weatherEnabled by viewModel.weatherEnabled.collectAsStateWithLifecycle()
+    val canBumpUp by viewModel.canBumpUp.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -191,6 +194,12 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
                     onCheckIn = viewModel::onCheckIn,
                     onCheckOut = viewModel::onCheckOut
                 )
+
+                // Bump Up — visible after sign-out, before 11:55pm, with today's sessions
+                if (canBumpUp) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    BumpUpButton(onBumpUp = viewModel::onBumpUp)
+                }
             }
         }
     }
@@ -483,6 +492,31 @@ private fun WeatherCard(suggestion: WeatherService.WeatherSuggestion) {
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
         }
+    }
+}
+
+/**
+ * "Bump Up" button — adds the time gap between last check-out and now
+ * as a bridging session. For dinner breaks where you come back to office.
+ */
+@Composable
+private fun BumpUpButton(onBumpUp: () -> Unit) {
+    OutlinedButton(
+        onClick = onBumpUp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .semantics { contentDescription = "Bump up — add time since last check-out" },
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = MaterialTheme.colorScheme.tertiary
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary)
+    ) {
+        Text(
+            text = "⬆ BUMP UP",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -85,6 +86,20 @@ class DashboardViewModel(
     /** Transient error message for UI display; cleared after showing. */
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /** Whether the bump-up button should be visible. */
+    val canBumpUp: StateFlow<Boolean> = combine(
+        attendanceRepository.isCurrentlyCheckedIn(),
+        attendanceRepository.getSessionsForDate(java.time.LocalDate.now(WeekBoundaryUtil.IST))
+    ) { checkedIn, todaySessions ->
+        if (checkedIn) return@combine false
+        val now = java.time.ZonedDateTime.now(WeekBoundaryUtil.IST)
+        val today = now.toLocalDate()
+        val isWeekday = today.dayOfWeek in java.time.DayOfWeek.MONDAY..java.time.DayOfWeek.FRIDAY
+        val beforeCutoff = now.hour < 23 || (now.hour == 23 && now.minute < 55)
+        val hasCompletedSessions = todaySessions.any { it.checkOutTime != null }
+        isWeekday && beforeCutoff && hasCompletedSessions
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     private val _weatherSuggestion = MutableStateFlow<WeatherService.WeatherSuggestion?>(null)
     val weatherSuggestion: StateFlow<WeatherService.WeatherSuggestion?> = _weatherSuggestion.asStateFlow()
 
@@ -138,6 +153,18 @@ class DashboardViewModel(
     /** Call from the UI after displaying the error to clear it. */
     fun clearError() {
         _error.value = null
+    }
+
+    /** Adds time between last check-out and now as a bridging session. */
+    fun onBumpUp() {
+        viewModelScope.launch {
+            try {
+                attendanceRepository.bumpUp()
+                refreshWidgets()
+            } catch (e: IllegalArgumentException) {
+                _error.value = e.message
+            }
+        }
     }
 
     fun clearAutoCheckInNote() {
